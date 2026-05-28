@@ -1,7 +1,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 
-const client = new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-1" });
+const client = new DynamoDBClient({ region: process.env.DYNAMODB_REGION ?? "ap-southeast-2" });
 const dynamo = DynamoDBDocumentClient.from(client);
 
 const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, private" };

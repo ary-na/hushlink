@@ -40,7 +40,7 @@ const apiHeaders = [
 const nextConfig: NextConfig = {
   env: {
     DYNAMODB_TABLE: process.env.DYNAMODB_TABLE,
-    AWS_REGION: process.env.AWS_REGION ?? "ap-southeast-2",
+    DYNAMODB_REGION: process.env.DYNAMODB_REGION ?? "ap-southeast-2",
   },
   async headers() {
     return [

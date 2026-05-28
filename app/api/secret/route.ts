@@ -8,7 +8,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 
 const client = new DynamoDBClient({
-  region: process.env.AWS_REGION ?? "us-east-1",
+  region: process.env.DYNAMODB_REGION ?? "ap-southeast-2",
 });
 const dynamo = DynamoDBDocumentClient.from(client);
 
