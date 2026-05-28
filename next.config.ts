@@ -40,7 +40,6 @@ const apiHeaders = [
 const nextConfig: NextConfig = {
   env: {
     DYNAMODB_TABLE: process.env.DYNAMODB_TABLE,
-    DYNAMODB_REGION: process.env.DYNAMODB_REGION ?? "ap-southeast-2",
     DYNAMO_ACCESS_KEY: process.env.DYNAMO_ACCESS_KEY,
     DYNAMO_SECRET_KEY: process.env.DYNAMO_SECRET_KEY,
   },
