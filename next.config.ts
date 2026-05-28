@@ -40,8 +40,6 @@ const apiHeaders = [
 const nextConfig: NextConfig = {
   env: {
     DYNAMODB_TABLE: process.env.DYNAMODB_TABLE,
-    DYNAMO_ACCESS_KEY: process.env.DYNAMO_ACCESS_KEY,
-    DYNAMO_SECRET_KEY: process.env.DYNAMO_SECRET_KEY,
   },
   async headers() {
     return [

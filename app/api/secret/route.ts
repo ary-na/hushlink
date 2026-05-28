@@ -9,12 +9,6 @@ import {
 
 const client = new DynamoDBClient({
   region: process.env.AWS_REGION ?? "ap-southeast-2",
-  ...(process.env.DYNAMO_ACCESS_KEY && {
-    credentials: {
-      accessKeyId: process.env.DYNAMO_ACCESS_KEY,
-      secretAccessKey: process.env.DYNAMO_SECRET_KEY!,
-    },
-  }),
 });
 const dynamo = DynamoDBDocumentClient.from(client);
 
