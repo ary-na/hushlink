@@ -1,60 +1,38 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import {
-  LockIcon,
-  FireIcon,
-  KeyIcon,
-  EyeIcon,
-  EyeOffIcon,
-  ShieldIcon,
-  AlertIcon,
-  CheckIcon,
-  CopyIcon,
-  TimerIcon,
-} from "@components/Icons";
+import { CheckIcon, CopyIcon } from "@components/Icons";
 import { REVEAL_TIMEOUT } from "@lib/constants";
 import { decryptSecret, type EncryptedPayload } from "@lib/crypto";
 import { apiFetch } from "@lib/api";
 
-type Props = { id: string };
-
-export default function RevealView({ id }: Props) {
+export default function RevealView({ id }: { id: string }) {
   const [state, setState] = useState("confirm");
   const [secret, setSecret] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [clipboardCleared, setCleared] = useState(false);
+  const [cleared, setCleared] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState(REVEAL_TIMEOUT);
   const [blurred, setBlurred] = useState(true);
-  const [cachedPayload, setCachedPayload] = useState<EncryptedPayload | null>(
-    null,
-  );
+  const [cachedPayload, setCachedPayload] = useState<EncryptedPayload | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!copied) return;
-    const wipeOnHide = () => {
-      if (document.hidden) navigator.clipboard.writeText("").catch(() => {});
-    };
-    document.addEventListener("visibilitychange", wipeOnHide);
-    return () => document.removeEventListener("visibilitychange", wipeOnHide);
+    const fn = () => { if (document.hidden) navigator.clipboard.writeText("").catch(() => {}); };
+    document.addEventListener("visibilitychange", fn);
+    return () => document.removeEventListener("visibilitychange", fn);
   }, [copied]);
 
   useEffect(() => {
     if (state !== "revealed") return;
     timerRef.current = setInterval(() => {
-      setTimeLeft((t) => {
-        if (t <= 1) {
-          clearInterval(timerRef.current!);
-          setSecret("");
-          setState("wiped");
-          return 0;
-        }
+      setTimeLeft(t => {
+        if (t <= 1) { clearInterval(timerRef.current!); setSecret(""); setState("wiped"); return 0; }
         return t - 1;
       });
     }, 1000);
@@ -64,261 +42,141 @@ export default function RevealView({ id }: Props) {
   const reveal = async (pw?: string) => {
     const resolvedPw = pw !== undefined ? pw : password;
     if (!code.trim()) return;
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
       let payload: EncryptedPayload;
-
       if (cachedPayload) {
-        // Password retry — secret already deleted, use cached payload
         payload = cachedPayload;
       } else {
         const res = await apiFetch(id);
         if (!res.found) {
-          if (res.decoy) {
-            setSecret(res.decoy);
-            setState("revealed");
-          } else setState("gone");
+          if (res.decoy) { setSecret(res.decoy); setState("revealed"); }
+          else setState("gone");
           setLoading(false);
           history.replaceState(null, "", window.location.pathname);
           return;
         }
         payload = res.payload;
       }
-
       if (payload.passwordProtected && !resolvedPw) {
-        setCachedPayload(payload);
-        setState("needpw");
+        setCachedPayload(payload); setState("needpw");
         history.replaceState(null, "", window.location.pathname);
-        setLoading(false);
-        return;
+        setLoading(false); return;
       }
-
-      const decrypted = await decryptSecret(
-        payload,
-        code.trim().toUpperCase(),
-        resolvedPw || null,
-      );
-      setSecret(decrypted);
-      setState("revealed");
+      const decrypted = await decryptSecret(payload, code.trim().toUpperCase(), resolvedPw || null);
+      setSecret(decrypted); setState("revealed");
       history.replaceState(null, "", window.location.pathname);
     } catch (e) {
       history.replaceState(null, "", window.location.pathname);
       if ((e as Error).message === "PASSWORD_REQUIRED") setState("needpw");
-      else setError("Wrong code or password. Please check and try again.");
+      else setError("Wrong code or password — check both and try again.");
     }
     setLoading(false);
   };
 
   const copy = () => {
-    navigator.clipboard.writeText(secret);
-    setCopied(true);
-    setTimeout(() => {
-      navigator.clipboard.writeText("").catch(() => {});
-      setCleared(true);
-      setCopied(false);
-    }, 60000);
+    navigator.clipboard.writeText(secret); setCopied(true);
+    setTimeout(() => { navigator.clipboard.writeText("").catch(() => {}); setCleared(true); setCopied(false); }, 60000);
   };
 
-  const timerPct = Math.round((timeLeft / REVEAL_TIMEOUT) * 100);
+  const pct = Math.round((timeLeft / REVEAL_TIMEOUT) * 100);
   const urgent = timeLeft <= 10;
 
-  if (state === "wiped")
-    return (
-      <div className="bg-surface-dark border border-border rounded-2xl p-7 mb-4 text-center">
-        <div className="w-16 h-16 mx-auto mb-4 bg-red-bg border border-red-border rounded-2xl flex items-center justify-center text-red">
-          <FireIcon s={28} />
-        </div>
-        <div className="text-[18px] font-medium text-text-bright mb-[6px]">
-          Secret wiped
-        </div>
-        <div className="text-[13px] text-text-dim leading-[1.6]">
-          The 30-second window has passed. Secret cleared from memory and DOM.
-        </div>
-      </div>
-    );
+  if (state === "wiped") return (
+    <div className="fade-in text-center py-4">
+      <div style={{ fontSize: 40, marginBottom: 16 }}>🔥</div>
+      <p style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>Secret wiped</p>
+      <p style={{ fontSize: 14, color: "rgba(255,255,255,0.45)" }}>The 30-second window passed. Cleared from memory.</p>
+    </div>
+  );
 
-  if (state === "gone")
-    return (
-      <div className="bg-surface-dark border border-border rounded-2xl p-7 mb-4 text-center">
-        <div className="w-16 h-16 mx-auto mb-4 bg-red-bg border border-red-border rounded-2xl flex items-center justify-center text-red">
-          <FireIcon s={28} />
-        </div>
-        <div className="text-[18px] font-medium text-text-bright mb-[6px]">
-          Nothing here
-        </div>
-        <div className="text-[13px] text-text-dim leading-[1.6]">
-          This secret has already been read or the link has expired.
-        </div>
-      </div>
-    );
+  if (state === "gone") return (
+    <div className="fade-in text-center py-4">
+      <div style={{ fontSize: 40, marginBottom: 16 }}>🔒</div>
+      <p style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>Nothing here</p>
+      <p style={{ fontSize: 14, color: "rgba(255,255,255,0.45)" }}>This secret has already been read or the link has expired.</p>
+    </div>
+  );
 
-  if (state === "revealed")
-    return (
-      <div>
-        <div
-          className={`text-xs mb-[10px] flex items-center gap-[6px] ${urgent ? "text-red" : "text-text-dim"}`}
-        >
-          <TimerIcon s={14} />
-          {urgent
-            ? `Wiping in ${timeLeft}s — copy now`
-            : `Auto-wipes in ${timeLeft}s`}
-        </div>
-        <div className="h-[3px] bg-border rounded-sm mb-3 overflow-hidden">
-          <div
-            className="timer-bar h-full rounded-sm"
-            style={{
-              width: `${timerPct}%`,
-              background: urgent
-                ? "#e8716a"
-                : "linear-gradient(90deg,#7c3aed,#a855f7)",
-            }}
-          />
-        </div>
-        <div className="flex items-center gap-[10px] px-4 py-3 bg-red-bg border border-red-border rounded-[10px] text-xs text-red mb-4">
-          <FireIcon s={14} />
-          Secret deleted from server. This is the only copy. Save it now.
-        </div>
-        <div className="bg-surface border border-border rounded-2xl p-7 mb-4">
-          <div className="text-[13px] font-medium text-text-dim uppercase tracking-[0.08em] mb-4 flex items-center gap-2">
-            <LockIcon s={14} />
-            Decrypted secret
-          </div>
-          <div
-            className={`secret-display ${!blurred ? "unblurred" : ""}`}
-            onClick={() => setBlurred(false)}
-            onContextMenu={(e) => e.preventDefault()}
-            title="Click to reveal"
-          >
-            {blurred ? "Click to reveal" : secret}
-          </div>
-          {blurred && (
-            <div className="text-xs text-text-faint mb-[14px] text-center">
-              Screenshot protection active · click to reveal
-            </div>
-          )}
-          <button
-            onClick={copy}
-            className={`w-full py-[14px] rounded-[10px] text-white text-sm font-medium cursor-pointer flex items-center justify-center gap-2 mt-5 border-none transition-all duration-200 hover:opacity-90 active:scale-[0.99] ${
-              copied
-                ? "bg-gradient-to-br from-green-bg to-green-bg2"
-                : "bg-gradient-to-br from-purple-mid to-purple-deep"
-            }`}
-          >
-            {copied ? <CheckIcon s={16} /> : <CopyIcon s={16} />}
-            {copied ? "Copied" : "Copy to clipboard"}
-          </button>
-          {copied && (
-            <div className="text-[11px] text-text-faint text-center mt-2">
-              {clipboardCleared
-                ? "✓ Clipboard cleared automatically"
-                : "Clipboard auto-clears in 60 seconds"}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-
-  if (state === "needpw")
-    return (
-      <div className="bg-surface-dark border border-border rounded-2xl p-7 mb-4 text-center">
-        <div className="w-16 h-16 mx-auto mb-4 bg-[linear-gradient(135deg,#1e1028,#160e24)] border border-border-purple rounded-2xl flex items-center justify-center text-purple">
-          <LockIcon s={28} />
-        </div>
-        <div className="text-[18px] font-medium text-text-bright mb-[6px]">
-          Password required
-        </div>
-        <div className="text-[13px] text-text-dim mb-6 leading-[1.6]">
-          This secret has a second encryption layer. Enter the password to
-          continue.
-        </div>
-        {error && (
-          <div className="flex items-center gap-[10px] px-4 py-3 bg-red-bg border border-red-border rounded-[10px] text-[13px] text-red mb-4">
-            <AlertIcon s={14} />
-            {error}
-          </div>
-        )}
-        <div className="pw-wrap relative mb-4 text-left">
-          <input
-            type={showPw ? "text" : "password"}
-            placeholder="Enter password..."
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && reveal(password)}
-            autoComplete="off"
-          />
-          <button
-            className="absolute right-[10px] top-1/2 -translate-y-1/2 bg-transparent border-none text-text-faint cursor-pointer p-1 flex items-center hover:text-purple transition-colors"
-            onClick={() => setShowPw((v) => !v)}
-          >
-            {showPw ? <EyeOffIcon /> : <EyeIcon />}
-          </button>
-        </div>
-        <button
-          onClick={() => reveal(password)}
-          disabled={loading || !password}
-          className="w-full py-[14px] bg-gradient-to-br from-purple-mid to-purple-deep rounded-[10px] text-white text-sm font-medium cursor-pointer flex items-center justify-center gap-2 border-none transition-all duration-200 hover:opacity-90 active:scale-[0.99] disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {loading ? <div className="spinner" /> : <LockIcon s={16} />} Decrypt
-          secret
-        </button>
-      </div>
-    );
-
-  return (
-    <div className="bg-surface-dark border border-border rounded-2xl p-7 mb-4 text-center">
-      <div className="w-16 h-16 mx-auto mb-4 bg-[linear-gradient(135deg,#1e1028,#160e24)] border border-border-purple rounded-2xl flex items-center justify-center text-purple">
-        <ShieldIcon s={28} />
-      </div>
-      <div className="text-[18px] font-medium text-text-bright mb-[6px]">
-        You have a secret
-      </div>
-      <div className="text-[13px] text-text-dim mb-6 leading-[1.6]">
-        Enter the code sent to you separately to decrypt it.
-        <br />
-        <strong>Opening this deletes it from the server permanently.</strong>
-      </div>
-      <div className="flex items-start gap-[10px] px-4 py-3 bg-teal-bg border border-teal-border rounded-[10px] text-xs text-teal mb-4 leading-[1.6]">
-        <KeyIcon s={14} />
-        <span>
-          The code was sent through a separate channel from this link. Check
-          your other messages.
+  if (state === "revealed") return (
+    <div className="fade-in">
+      <div className="flex items-center justify-between mb-3">
+        <p className="section-label" style={{ marginBottom: 0 }}>Decrypted</p>
+        <span style={{ fontSize: 13, color: urgent ? "var(--color-red)" : "rgba(255,255,255,0.4)" }}>
+          {timeLeft}s
         </span>
       </div>
-      {error && (
-        <div className="flex items-center gap-[10px] px-4 py-3 bg-red-bg border border-red-border rounded-[10px] text-[13px] text-red mb-4">
-          <AlertIcon s={14} />
-          {error}
-        </div>
-      )}
-      <div className="text-left mb-4">
-        <div className="text-xs text-text-dim mb-2 font-medium">
-          Enter your code
-        </div>
+
+      <div className="mb-5 overflow-hidden" style={{ height: 3, background: "rgba(255,255,255,0.07)", borderRadius: 999 }}>
+        <div className="timer-bar h-full" style={{
+          width: `${pct}%`,
+          borderRadius: 999,
+          background: urgent ? "var(--color-red)" : "linear-gradient(90deg, #6366f1, #8b5cf6)",
+        }} />
+      </div>
+
+      {urgent && <div className="notice notice-red mb-4">Wiping in {timeLeft} seconds — copy now.</div>}
+
+      <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 12 }}>
+        Deleted from server · this is the only copy
+      </p>
+
+      <div className={`secret-display mb-2 ${!blurred ? "revealed" : ""}`} onClick={() => setBlurred(false)} onContextMenu={e => e.preventDefault()} title="Click to reveal">
+        {blurred ? "Click to reveal" : secret}
+      </div>
+      {blurred && <p className="text-center mb-5" style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>Screenshot protection · click to reveal</p>}
+
+      <button onClick={copy} className={copied ? "btn-secondary" : "btn-primary"} style={copied ? { borderColor: "rgba(52,211,153,0.4)", color: "#34d399" } : {}}>
+        {copied ? <CheckIcon s={14} /> : <CopyIcon s={14} />}
+        {copied ? "Copied to clipboard" : "Copy to clipboard"}
+      </button>
+      {copied && <p className="text-center mt-2" style={{ fontSize: 12, color: cleared ? "var(--color-green)" : "rgba(255,255,255,0.35)" }}>{cleared ? "✓ Clipboard cleared" : "Clears in 60 seconds"}</p>}
+    </div>
+  );
+
+  if (state === "needpw") return (
+    <div className="fade-in">
+      <p className="section-label">Authentication required</p>
+      <p className="mb-1" style={{ fontSize: 17, fontWeight: 600 }}>Password required</p>
+      <p className="mb-6" style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", lineHeight: 1.65 }}>This secret has a second encryption layer.</p>
+      {error && <div className="notice notice-red mb-5">{error}</div>}
+      <div className="relative mb-6">
+        <input className="glass-input" type={showPw ? "text" : "password"} placeholder="Enter password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && reveal(password)} autoComplete="off" style={{ paddingRight: 56 }} />
+        <button onClick={() => setShowPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-xs border-none bg-transparent cursor-pointer" style={{ color: "rgba(255,255,255,0.4)" }}>{showPw ? "hide" : "show"}</button>
+      </div>
+      <button onClick={() => reveal(password)} disabled={loading || !password} className="btn-primary">
+        {loading ? <div className="spinner" /> : null}
+        {loading ? "Decrypting…" : "Decrypt"}
+      </button>
+    </div>
+  );
+
+  return (
+    <div className="fade-in">
+      <p className="section-label">Incoming secret</p>
+      <p className="mb-1" style={{ fontSize: 17, fontWeight: 600 }}>You have a secret</p>
+      <p className="mb-6" style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", lineHeight: 1.65 }}>
+        Enter the code sent to you separately. Opening this permanently deletes it from the server.
+      </p>
+      <div className="notice notice-amber mb-6">
+        The code was sent through a different channel. Check your other messages.
+      </div>
+      {error && <div className="notice notice-red mb-5">{error}</div>}
+      <div className="mb-6">
+        <p className="section-label">Your code</p>
         <input
-          className="code-input"
+          className="glass-input"
           placeholder="3X7K-MN2P-5HRV-8CTW"
           value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-          onKeyDown={(e) => e.key === "Enter" && reveal()}
-          autoComplete="off"
-          spellCheck={false}
-          data-gramm="false"
-          data-gramm_editor="false"
-          style={{
-            fontFamily: "'JetBrains Mono',monospace",
-            letterSpacing: "0.08em",
-            padding: "12px 16px",
-          }}
+          onChange={e => setCode(e.target.value.toUpperCase())}
+          onKeyDown={e => e.key === "Enter" && reveal()}
+          autoComplete="off" spellCheck={false}
+          style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.1em" }}
         />
       </div>
-      <button
-        onClick={() => reveal()}
-        disabled={loading || !code.trim()}
-        className="w-full py-[14px] bg-gradient-to-br from-purple-mid to-purple-deep rounded-[10px] text-white text-sm font-medium cursor-pointer flex items-center justify-center gap-2 border-none transition-all duration-200 hover:opacity-90 active:scale-[0.99] disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        {loading ? <div className="spinner" /> : <EyeIcon s={16} />}
-        {loading ? "Decrypting..." : "Reveal & delete"}
+      <button onClick={() => reveal()} disabled={loading || !code.trim()} className="btn-primary">
+        {loading ? <div className="spinner" /> : null}
+        {loading ? "Decrypting…" : "Reveal and delete"}
       </button>
     </div>
   );

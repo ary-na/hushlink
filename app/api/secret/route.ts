@@ -6,6 +6,7 @@ import {
   GetCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { validateApiKey } from "@lib/apikeys";
 
 const client = new DynamoDBClient({
   region: process.env.AWS_REGION ?? "ap-southeast-2",
@@ -17,6 +18,9 @@ const dynamo = DynamoDBDocumentClient.from(client);
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX_STORE = 10;
 const RATE_MAX_FETCH = 20;
+// API key holders get 6× higher limits
+const RATE_MAX_STORE_KEY = 60;
+const RATE_MAX_FETCH_KEY = 120;
 
 // base64-encoded AES-GCM ciphertext of 64 KB plaintext ≈ 88 KB; headroom for
 // the password-wrapped-key fields; reject anything implausibly large.
@@ -76,6 +80,36 @@ async function isRateLimited(
   } catch (e) {
     // Fail open on DynamoDB error — availability > perfect rate limiting.
     console.error("[rate-limit] DynamoDB error, failing open:", e);
+    return false;
+  }
+}
+
+async function isKeyRateLimited(
+  keyId: string,
+  action: "store" | "fetch",
+): Promise<boolean> {
+  const TABLE = process.env.DYNAMODB_TABLE;
+  if (!TABLE) return false;
+  const window = Math.floor(Date.now() / RATE_WINDOW_MS);
+  const pk = `rl:key:${keyId}:${action}:${window}`;
+  const limit = action === "store" ? RATE_MAX_STORE_KEY : RATE_MAX_FETCH_KEY;
+  try {
+    const result = await dynamo.send(
+      new UpdateCommand({
+        TableName: TABLE,
+        Key: { pk },
+        UpdateExpression:
+          "SET #ttl = if_not_exists(#ttl, :ttl) ADD #count :one",
+        ExpressionAttributeNames: { "#count": "count", "#ttl": "ttl" },
+        ExpressionAttributeValues: {
+          ":one": 1,
+          ":ttl": Math.floor(Date.now() / 1000) + 120,
+        },
+        ReturnValues: "UPDATED_NEW",
+      }),
+    );
+    return ((result.Attributes?.count as number) ?? 0) > limit;
+  } catch {
     return false;
   }
 }
@@ -175,8 +209,17 @@ export async function POST(request: Request): Promise<Response> {
   if (!ct.includes("application/json"))
     return json({ error: "Content-Type must be application/json." }, 415);
 
-  const ip = getIp(request);
-  if (await isRateLimited(ip, "store")) return rateLimitedResponse();
+  // API key auth: if present, validate and use key-based rate limits
+  const authHeader = request.headers.get("authorization");
+  const bearerKey = authHeader?.startsWith("Bearer hl_") ? authHeader.slice(7) : null;
+  if (bearerKey !== null) {
+    const { valid, keyId } = await validateApiKey(bearerKey, dynamo, TABLE);
+    if (!valid) return json({ error: "Invalid API key." }, 401);
+    if (await isKeyRateLimited(keyId!, "store")) return rateLimitedResponse();
+  } else {
+    const ip = getIp(request);
+    if (await isRateLimited(ip, "store")) return rateLimitedResponse();
+  }
 
   let body: unknown;
   try {
@@ -247,8 +290,16 @@ export async function GET(request: Request): Promise<Response> {
   const TABLE = process.env.DYNAMODB_TABLE;
   if (!TABLE) return json({ error: "Server misconfiguration." }, 500);
 
-  const ip = getIp(request);
-  if (await isRateLimited(ip, "fetch")) return rateLimitedResponse();
+  const authHeader = request.headers.get("authorization");
+  const bearerKey = authHeader?.startsWith("Bearer hl_") ? authHeader.slice(7) : null;
+  if (bearerKey !== null) {
+    const { valid, keyId } = await validateApiKey(bearerKey, dynamo, TABLE);
+    if (!valid) return json({ error: "Invalid API key." }, 401);
+    if (await isKeyRateLimited(keyId!, "fetch")) return rateLimitedResponse();
+  } else {
+    const ip = getIp(request);
+    if (await isRateLimited(ip, "fetch")) return rateLimitedResponse();
+  }
 
   const id = new URL(request.url).searchParams.get("id");
   if (!id || !isValidId(id)) return json({ error: "Invalid ID." }, 400);

@@ -7,6 +7,7 @@ import RevealView from "@components/RevealView";
 import ResultView from "@components/ResultView";
 import AboutView from "@components/AboutView";
 import ConsiderView from "@components/ConsiderView";
+import ApiKeyView from "@components/ApiKeyView";
 import type { ShareResult } from "@components/ShareView";
 
 function parseRevealHash(): { id: string } | null {
@@ -17,11 +18,20 @@ function parseRevealHash(): { id: string } | null {
   return id && /^[a-f0-9]{16}$/.test(id) ? { id } : null;
 }
 
+const TABS = [
+  { id: "share", label: "Create" },
+  { id: "about", label: "How it works" },
+  { id: "tips",  label: "Stay safe" },
+  { id: "api",   label: "API" },
+] as const;
+
+type Tab = (typeof TABS)[number]["id"];
+
 export default function App() {
   const [revealParams, setRevealParams] = useState<{ id: string } | null>(null);
   const [page, setPage] = useState("share");
   const [result, setResult] = useState<ShareResult | null>(null);
-  const [tab, setTab] = useState("share");
+  const [tab, setTab] = useState<Tab>("share");
 
   useEffect(() => {
     const params = parseRevealHash();
@@ -35,91 +45,91 @@ export default function App() {
     setResult(res);
     setPage("result");
   };
+
   const handleReset = () => {
     setResult(null);
     setPage("share");
     setTab("share");
     window.location.hash = "";
   };
+
   const isReveal = page === "reveal";
 
   return (
     <div className="min-h-screen bg-bg relative overflow-hidden">
-      <div className="bg-grid" />
-      <div className="bg-glow" />
-      <div className="max-w-[640px] mx-auto px-6 relative z-10">
-        <div className="pt-12 pb-10 text-center">
-          <div className="inline-flex items-center gap-[10px] mb-3">
-            <div className="w-9 h-9 bg-gradient-to-br from-purple-mid to-purple-dark rounded-[10px] flex items-center justify-center text-white">
-              <LockIcon s={18} />
+      {/* Background blobs */}
+      <div aria-hidden className="pointer-events-none">
+        <div className="blob blob-1" />
+        <div className="blob blob-2" />
+        <div className="blob blob-3" />
+      </div>
+
+      {/* Content */}
+      <div className="relative z-10 max-w-[600px] mx-auto px-5 pb-16">
+
+        {/* Header */}
+        <div className="pt-14 pb-8">
+          <div className="flex items-center gap-3 mb-2">
+            <div
+              className="flex items-center justify-center flex-shrink-0"
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                boxShadow: "0 0 20px rgba(99,102,241,0.45)",
+              }}
+            >
+              <LockIcon s={16} />
             </div>
-            <div className="text-[22px] font-semibold tracking-[-0.5px] text-text-bright">
-              hush<span className="text-purple">link</span>
-            </div>
+            <span style={{ fontSize: 18, fontWeight: 600, letterSpacing: "-0.02em" }}>
+              hushlink
+            </span>
           </div>
-          <div className="text-sm text-text-dim">
-            Zero-knowledge secret sharing. One link. One read. Gone forever.
-          </div>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)" }}>
+            Zero-knowledge secret sharing · encrypted in your browser
+          </p>
         </div>
 
+        {/* Tab nav */}
         {!isReveal && (
-          <div className="flex gap-1 bg-surface border border-border rounded-xl p-1 mb-6">
-            {(["share", "about", "tips"] as const).map((t) => (
+          <div className="tab-bar mb-7">
+            {TABS.map(({ id, label }) => (
               <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`flex-1 py-[9px] rounded-lg text-[13px] cursor-pointer border-none transition-all duration-150 ${
-                  tab === t
-                    ? "bg-[#1e1c2a] text-text font-medium"
-                    : "bg-transparent text-text-faint font-normal"
-                }`}
+                key={id}
+                className={`tab-btn ${tab === id ? "active" : ""}`}
+                onClick={() => {
+                  setTab(id);
+                  if (id === "share" && page === "result") handleReset();
+                }}
               >
-                {t === "share"
-                  ? "Create link"
-                  : t === "about"
-                    ? "How it works"
-                    : "Stay safe"}
+                {label}
               </button>
             ))}
           </div>
         )}
 
-        {isReveal && <RevealView id={revealParams!.id} />}
-        {!isReveal && tab === "share" && page === "share" && (
-          <ShareView onCreated={handleCreated} />
-        )}
-        {!isReveal && tab === "share" && page === "result" && result && (
-          <ResultView result={result} onReset={handleReset} />
-        )}
-        {!isReveal && tab === "about" && <AboutView />}
-        {!isReveal && tab === "tips" && <ConsiderView />}
+        {/* Main glass card */}
+        <div className="glass p-7 mb-6">
+          {isReveal && <RevealView id={revealParams!.id} />}
+          {!isReveal && tab === "share" && page === "share" && (
+            <ShareView onCreated={handleCreated} />
+          )}
+          {!isReveal && tab === "share" && page === "result" && result && (
+            <ResultView result={result} onReset={handleReset} />
+          )}
+          {!isReveal && tab === "about" && <AboutView />}
+          {!isReveal && tab === "tips"  && <ConsiderView />}
+          {!isReveal && tab === "api"   && <ApiKeyView />}
+        </div>
 
-        <div className="text-center py-8 pb-12 text-xs text-text-ghost space-y-2">
-          <div>
-            Encrypted in your browser · Credentials never exposed · No accounts
-            · No logs
-          </div>
-          <div className="flex items-center justify-center gap-3">
-            <a href="/privacy" className="text-text-ghost hover:text-text-faint transition-colors">Privacy</a>
-            <span>·</span>
-            <a href="/terms" className="text-text-ghost hover:text-text-faint transition-colors">Terms</a>
-            <span>·</span>
-            <a href="/status" className="text-text-ghost hover:text-text-faint transition-colors">Status</a>
-            <span>·</span>
-            <a href="mailto:security@hushlink.app" className="text-text-ghost hover:text-text-faint transition-colors">Security</a>
-            <span>·</span>
-            <span>
-              Made by{" "}
-              <a
-                href="https://arii.dev"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-text-faint hover:text-purple transition-colors"
-              >
-                Arian Najafi Yamchelo
-              </a>
-            </span>
-          </div>
+        {/* Footer */}
+        <div className="flex flex-wrap gap-x-4 gap-y-1 justify-center" style={{ fontSize: 12, color: "rgba(255,255,255,0.25)" }}>
+          <a href="/privacy" className="hover:text-white transition-colors">Privacy</a>
+          <a href="/terms" className="hover:text-white transition-colors">Terms</a>
+          <a href="/status" className="hover:text-white transition-colors">Status</a>
+          <a href="mailto:security@hushlink.app" className="hover:text-white transition-colors">Security</a>
+          <a href="https://arii.dev" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Arian</a>
         </div>
       </div>
     </div>
